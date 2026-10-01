@@ -1,1 +1,133 @@
 
+name: Expense Tracker CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+  ECR_BACKEND_REPOSITORY: expense-tracker-backend
+  ECR_FRONTEND_REPOSITORY: expense-tracker-frontend
+
+  EKS_CLUSTER_NAME: terraform-practice-eks
+  K8S_NAMESPACE: expense-app
+
+jobs:
+
+  # ==========================================================
+  # 1. BUILD + TEST
+  # ==========================================================
+
+  build-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # ------------------------------
+      # Backend
+      # ------------------------------
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Build backend
+        working-directory: backend
+        run: |
+          chmod +x mvnw
+          ./mvnw clean package -DskipTests=false
+
+      # ------------------------------
+      # Frontend
+      # ------------------------------
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+
+  # ==========================================================
+  # 2. SONARQUBE
+  # ==========================================================
+
+  sonarqube:
+    name: SonarQube Analysis
+    needs: build-test
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+
+  # ==========================================================
+  # 3. BUILD DOCKER IMAGES + PUSH TO ECR
+  # ==========================================================
+
+  docker:
+    name: Build Docker Images and Push to ECR
+    needs: sonarqube
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # ------------------------------
+      # AWS authentication
+      # ------------------------------
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+
+      # ------------------------------
+      # ECR login
+      #
+```
+
