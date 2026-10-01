@@ -1,4 +1,4 @@
-
+```yaml
 name: Expense Tracker CI
 
 on:
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -28,7 +28,7 @@ jobs:
         working-directory: backend
         run: |
           chmod +x mvnw
-          ./mvnw clean package
+          ./mvnw -B -ntp clean package -DskipTests=false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -44,3 +44,4 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+```
