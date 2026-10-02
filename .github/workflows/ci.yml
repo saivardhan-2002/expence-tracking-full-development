@@ -1,4 +1,3 @@
-
 name: Expense Tracker CI
 
 on:
@@ -10,13 +9,21 @@ on:
 
 jobs:
   build-test:
-    name: Build and Test
+    name: Build, Test and Docker
     runs-on: ubuntu-latest
 
     steps:
+
+      # ----------------------------------------
+      # 1. Checkout source code
+      # ----------------------------------------
       - name: Checkout source code
         uses: actions/checkout@v4
 
+
+      # ----------------------------------------
+      # 2. Setup Java 21
+      # ----------------------------------------
       - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
@@ -24,12 +31,20 @@ jobs:
           java-version: '21'
           cache: maven
 
+
+      # ----------------------------------------
+      # 3. Build and test backend
+      # ----------------------------------------
       - name: Build and test backend
         working-directory: backend
         run: |
           chmod +x mvnw
           ./mvnw -B -ntp clean package -DskipTests=false
 
+
+      # ----------------------------------------
+      # 4. Setup Node.js
+      # ----------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -37,11 +52,81 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+
+      # ----------------------------------------
+      # 5. Install frontend dependencies
+      # ----------------------------------------
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
 
+
+      # ----------------------------------------
+      # 6. Build frontend
+      # ----------------------------------------
       - name: Build frontend
         working-directory: frontend
         run: npm run build
 
+
+      # ----------------------------------------
+      # 7. Build backend Docker image
+      # ----------------------------------------
+      - name: Build backend Docker image
+        run: |
+          docker build \
+            -t expense-backend:latest \
+            ./backend
+
+
+      # ----------------------------------------
+      # 8. Run backend Docker container
+      # ----------------------------------------
+      - name: Run backend container
+        run: |
+          docker run -d \
+            --name expense-backend-test \
+            -p 8080:8080 \
+            expense-backend:latest
+
+
+      # ----------------------------------------
+      # 9. Wait for container
+      # ----------------------------------------
+      - name: Wait for backend container
+        run: |
+          sleep 20
+
+
+      # ----------------------------------------
+      # 10. Check Docker container
+      # ----------------------------------------
+      - name: Check backend container
+        run: |
+          docker ps -a
+          docker logs expense-backend-test
+
+
+      # ----------------------------------------
+      # 11. Check container status
+      # ----------------------------------------
+      - name: Verify backend container is running
+        run: |
+          STATUS=$(docker inspect -f '{{.State.Status}}' expense-backend-test)
+
+          echo "Container status: $STATUS"
+
+          if [ "$STATUS" != "running" ]; then
+            echo "Backend container failed to start"
+            exit 1
+          fi
+
+
+      # ----------------------------------------
+      # 12. Stop and remove test container
+      # ----------------------------------------
+      - name: Cleanup Docker container
+        if: always()
+        run: |
+          docker stop expense-backend-test || true
+          docker rm expense-backend-test || true
