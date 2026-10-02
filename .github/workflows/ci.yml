@@ -118,9 +118,11 @@ jobs:
 
           if [ "$STATUS" != "running" ]; then
             echo "Backend container failed to start"
+            echo "========== CONTAINER LOGS =========="
+            docker logs expense-backend-test
+            echo "===================================="
             exit 1
           fi
-
 
       # ----------------------------------------
       # 12. Stop and remove test container
