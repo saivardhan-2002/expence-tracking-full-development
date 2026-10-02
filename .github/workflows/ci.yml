@@ -69,7 +69,7 @@ jobs:
         run: npm run build
 
 
-      # ----------------------------------------
+       # ----------------------------------------
       # 7. Build backend Docker image
       # ----------------------------------------
       - name: Build backend Docker image
@@ -80,55 +80,118 @@ jobs:
 
 
       # ----------------------------------------
-      # 8. Run backend Docker container
+      # 8. Create Docker network
+      # ----------------------------------------
+      - name: Create Docker network
+        run: |
+          docker network create expense-network
+
+
+      # ----------------------------------------
+      # 9. Start PostgreSQL
+      # ----------------------------------------
+      - name: Start PostgreSQL
+        run: |
+          docker run -d \
+            --name expense-postgres \
+            --network expense-network \
+            -e POSTGRES_DB=expense_tracker_db \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=123 \
+            postgres:15-alpine
+
+
+      # ----------------------------------------
+      # 10. Start Redis
+      # ----------------------------------------
+      - name: Start Redis
+        run: |
+          docker run -d \
+            --name expense-redis \
+            --network expense-network \
+            redis:7-alpine
+
+
+      # ----------------------------------------
+      # 11. Wait for PostgreSQL and Redis
+      # ----------------------------------------
+      - name: Wait for dependencies
+        run: |
+          sleep 10
+
+          echo "PostgreSQL:"
+          docker ps --filter name=expense-postgres
+
+          echo "Redis:"
+          docker ps --filter name=expense-redis
+
+
+      # ----------------------------------------
+      # 12. Run backend container
       # ----------------------------------------
       - name: Run backend container
         run: |
           docker run -d \
             --name expense-backend-test \
+            --network expense-network \
+            -e DB_HOST=expense-postgres \
+            -e REDIS_HOST=expense-redis \
             -p 8080:8080 \
             expense-backend:latest
 
 
       # ----------------------------------------
-      # 9. Wait for container
+      # 13. Wait for backend
       # ----------------------------------------
-      - name: Wait for backend container
+      - name: Wait for backend
         run: |
           sleep 20
 
 
       # ----------------------------------------
-      # 10. Check Docker container
+      # 14. Check containers and logs
       # ----------------------------------------
-      - name: Check backend container
+      - name: Check containers
         run: |
           docker ps -a
+
+          echo "========== BACKEND LOGS =========="
           docker logs expense-backend-test
 
+          echo "========== POSTGRES LOGS =========="
+          docker logs expense-postgres
+
+          echo "========== REDIS LOGS =========="
+          docker logs expense-redis
+
 
       # ----------------------------------------
-      # 11. Check container status
+      # 15. Verify backend
       # ----------------------------------------
-      - name: Verify backend container is running
+      - name: Verify backend container
         run: |
           STATUS=$(docker inspect -f '{{.State.Status}}' expense-backend-test)
 
-          echo "Container status: $STATUS"
+          echo "Backend container status: $STATUS"
 
           if [ "$STATUS" != "running" ]; then
-            echo "Backend container failed to start"
-            echo "========== CONTAINER LOGS =========="
-            docker logs expense-backend-test
-            echo "===================================="
+            echo "Backend container failed"
             exit 1
           fi
 
+
       # ----------------------------------------
-      # 12. Stop and remove test container
+      # 16. Cleanup
       # ----------------------------------------
-      - name: Cleanup Docker container
+      - name: Cleanup containers
         if: always()
         run: |
           docker stop expense-backend-test || true
+          docker stop expense-postgres || true
+          docker stop expense-redis || true
+
           docker rm expense-backend-test || true
+          docker rm expense-postgres || true
+          docker rm expense-redis || true
+
+          docker network rm expense-network || true
